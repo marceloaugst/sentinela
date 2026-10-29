@@ -6,7 +6,7 @@ Aplicação React independente que consome a API REST em Go (contrato: [`fronten
 ## Stack
 
 React 19 · TypeScript (strict) · Vite 8 · Tailwind CSS 4 · componentes no padrão shadcn/ui (Radix + cva) · Lucide ·
-React Router 7 · TanStack Query 5 · Recharts 3 · React Hook Form + Zod · Axios · Vitest + Testing Library · ESLint.
+React Router 7 · TanStack Query 5 · ECharts 6 · React Hook Form + Zod · Axios · Vitest + Testing Library · ESLint.
 
 ## Comandos
 
@@ -45,7 +45,7 @@ src/
   components/
     layout/       AppLayout, Sidebar (recolhível + gaveta mobile), Header, indicador de conexão
     ui/           primitivos shadcn-style (button, card, dialog, table, tabs, …)
-    charts/       TimeSeriesChart (Recharts) e ChartCard (loading/erro/vazio)
+    charts/       TimeSeriesChart (ECharts, com zoom) e ChartCard (loading/erro/vazio)
     data-display/ badges de estado, StatCard, Pagination, ConfirmDialog, estados de lista
   features/
     auth/ dashboard/ servers/ metrics/ services/ alerts/ incidents/ settings/ realtime/

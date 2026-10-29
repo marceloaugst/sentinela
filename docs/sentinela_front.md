@@ -22,7 +22,7 @@ Utilize as seguintes tecnologias:
 - Lucide React: ícones.
 - React Router: navegação entre páginas.
 - TanStack Query: gerenciamento das requisições HTTP, cache, atualização e estados de carregamento.
-- Recharts: gráficos de métricas históricas.
+- ECharts (Apache): gráficos de métricas históricas.
 - React Hook Form: gerenciamento de formulários.
 - Zod: validação dos dados dos formulários.
 - Axios: cliente HTTP para comunicação com a API Go.
@@ -322,7 +322,7 @@ Não simule tempo real utilizando apenas animações visuais.
 
 ## 13. Gráficos e métricas
 
-Utilize Recharts para gráficos de séries temporais.
+Utilize ECharts para gráficos de séries temporais.
 
 Os gráficos deverão oferecer:
 

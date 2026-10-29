@@ -1,12 +1,19 @@
-import { useId } from 'react'
-import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { useEffect, useRef } from 'react'
+import * as echarts from 'echarts/core'
+import { LineChart } from 'echarts/charts'
+import { DataZoomComponent, GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+import type { EChartsCoreOption } from 'echarts/core'
 import { formatDayTime } from '@/lib/format'
 import type { Stat } from '@/types/api'
+
+echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
 
 export interface ChartSeries {
   /** Chave da média no row; `${key}_min` e `${key}_max` são opcionais (tooltip). */
   key: string
   label: string
+  /** Cor CSS; aceita `var(--token)`, resolvida no tema atual. */
   color: string
 }
 
@@ -24,7 +31,11 @@ interface Props {
   height?: number
 }
 
-const AXIS_TICK = { fill: 'var(--muted-foreground)', fontSize: 11 }
+/** Canvas não entende `var(--x)`: resolve o token no tema atual. */
+function cssColor(value: string) {
+  const m = /^var\((--[\w-]+)\)$/.exec(value)
+  return m ? getComputedStyle(document.documentElement).getPropertyValue(m[1]!).trim() || value : value
+}
 
 function xTick(spanMs: number) {
   const day = spanMs > 24 * 3600_000
@@ -35,97 +46,156 @@ function xTick(spanMs: number) {
   }
 }
 
-interface TipProps {
-  active?: boolean
-  payload?: { dataKey?: string | number; payload: ChartRow }[]
-  label?: number | string
-  series: ChartSeries[]
-  format: Props['format']
+function buildOption({ rows, series, format, domain, spanMs }: Props, resetZoom: boolean): EChartsCoreOption {
+  const muted = cssColor('var(--muted-foreground)')
+  const grid = cssColor('var(--grid)')
+  const border = cssColor('var(--border)')
+  const multi = series.length > 1
+  const zoomable = rows.length > 1
+  const reset = resetZoom ? { start: 0, end: 100 } : {}
+
+  return {
+    animation: false,
+    grid: { top: multi ? 30 : 10, right: 12, bottom: zoomable ? 44 : 24, left: 8, containLabel: true },
+    legend: multi
+      ? { show: true, top: 0, icon: 'circle', itemWidth: 8, itemHeight: 8, textStyle: { color: muted, fontSize: 12 } }
+      : { show: false },
+    tooltip: {
+      trigger: 'axis',
+      confine: true,
+      backgroundColor: cssColor('var(--popover)'),
+      borderColor: border,
+      padding: [8, 12],
+      textStyle: { color: cssColor('var(--popover-foreground)'), fontSize: 12 },
+      extraCssText: 'box-shadow: 0 8px 24px rgb(0 0 0 / 0.15); border-radius: 8px;',
+      axisPointer: { type: 'line', lineStyle: { color: muted, type: 'dashed' } },
+      formatter: (params: unknown) => {
+        const first = (params as { dataIndex: number }[])[0]
+        const row = first && rows[first.dataIndex]
+        if (!row) return ''
+        const lines = series.map((s) => {
+          const min = row[`${s.key}_min`]
+          const max = row[`${s.key}_max`]
+          const range =
+            min != null && max != null && min !== max ? `<span style="color:${muted}">(${format(min)} – ${format(max)})</span>` : ''
+          return (
+            `<div style="display:flex;align-items:center;gap:8px;padding:2px 0">` +
+            `<span style="width:8px;height:8px;border-radius:50%;background:${cssColor(s.color)}"></span>` +
+            `<span style="color:${muted}">${s.label}</span>` +
+            `<span style="margin-left:auto;font-weight:500;font-variant-numeric:tabular-nums">${format(row[s.key])}</span>${range}</div>`
+          )
+        })
+        return `<div style="font-weight:500;margin-bottom:4px">${formatDayTime(row.t)}</div>${lines.join('')}`
+      },
+    },
+    xAxis: {
+      type: 'time',
+      axisLabel: { color: muted, fontSize: 11, hideOverlap: true, formatter: xTick(spanMs) },
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: border } },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      min: domain ? domain[0] : 0,
+      max: domain ? domain[1] : undefined,
+      axisLabel: { color: muted, fontSize: 11, formatter: (v: number) => format(v) },
+      axisTick: { show: false },
+      axisLine: { show: false },
+      splitLine: { lineStyle: { color: grid, type: 'dashed' } },
+    },
+    dataZoom: zoomable
+      ? [
+          { type: 'inside', xAxisIndex: 0, filterMode: 'none', ...reset },
+          {
+            type: 'slider',
+            xAxisIndex: 0,
+            filterMode: 'none',
+            height: 18,
+            bottom: 4,
+            borderColor: border,
+            fillerColor: grid,
+            handleSize: '100%',
+            moveHandleSize: 0,
+            textStyle: { color: muted, fontSize: 10 },
+            labelFormatter: (v: number) => xTick(spanMs)(v),
+            dataBackground: { lineStyle: { color: grid }, areaStyle: { color: grid } },
+            selectedDataBackground: { lineStyle: { color: muted }, areaStyle: { color: grid } },
+            ...reset,
+          },
+        ]
+      : [],
+    series: series.map((s) => {
+      const color = cssColor(s.color)
+      return {
+        id: s.key,
+        name: s.label,
+        type: 'line',
+        smooth: true,
+        showSymbol: false,
+        connectNulls: false,
+        sampling: 'lttb',
+        lineStyle: { width: 2, color },
+        itemStyle: { color },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: color + '4d' },
+              { offset: 1, color: color + '00' },
+            ],
+          },
+        },
+        emphasis: { disabled: true },
+        data: rows.map((r) => [r.t, r[s.key]]),
+      }
+    }),
+  }
 }
 
-function ChartTooltip({ active, payload, label, series, format }: TipProps) {
-  if (!active || !payload?.length) return null
-  const row = payload[0]!.payload
-  return (
-    <div className="rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg">
-      <p className="mb-1 font-medium">{formatDayTime(Number(label))}</p>
-      {series.map((s) => {
-        const avg = row[s.key]
-        const min = row[`${s.key}_min`]
-        const max = row[`${s.key}_max`]
-        return (
-          <div key={s.key} className="flex items-center gap-2 py-0.5">
-            <span className="size-2 rounded-full" style={{ background: s.color }} />
-            <span className="text-muted-foreground">{s.label}</span>
-            <span className="tabular ml-auto font-medium">{format(avg)}</span>
-            {min != null && max != null && min !== max && (
-              <span className="tabular text-muted-foreground">
-                ({format(min)} – {format(max)})
-              </span>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
+export function TimeSeriesChart(props: Props) {
+  const { height = 220, series } = props
+  const el = useRef<HTMLDivElement>(null)
+  const chart = useRef<echarts.ECharts | null>(null)
+  const lastSpan = useRef<number | null>(null)
+  const latest = useRef(props)
 
-export function TimeSeriesChart({ rows, series, format, domain, spanMs, height = 220 }: Props) {
-  const uid = useId().replace(/:/g, '')
-  const tick = xTick(spanMs)
-  return (
-    <div style={{ height }} role="img" aria-label={`Gráfico de ${series.map((s) => s.label).join(', ')}`}>
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={rows} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
-          <defs>
-            {series.map((s) => (
-              <linearGradient key={s.key} id={`${uid}-${s.key}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={s.color} stopOpacity={0.3} />
-                <stop offset="100%" stopColor={s.color} stopOpacity={0} />
-              </linearGradient>
-            ))}
-          </defs>
-          <CartesianGrid stroke="var(--grid)" strokeDasharray="3 3" vertical={false} />
-          <XAxis
-            dataKey="t"
-            type="number"
-            scale="time"
-            domain={['dataMin', 'dataMax']}
-            tickFormatter={tick}
-            tick={AXIS_TICK}
-            tickLine={false}
-            axisLine={{ stroke: 'var(--border)' }}
-            minTickGap={48}
-          />
-          <YAxis
-            domain={domain ?? [0, 'auto']}
-            tickFormatter={(v: number) => format(v)}
-            tick={AXIS_TICK}
-            tickLine={false}
-            axisLine={false}
-            width={68}
-          />
-          <Tooltip content={<ChartTooltip series={series} format={format} />} cursor={{ stroke: 'var(--muted-foreground)', strokeDasharray: 3 }} />
-          {series.length > 1 && <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />}
-          {series.map((s) => (
-            <Area
-              key={s.key}
-              type="monotone"
-              dataKey={s.key}
-              name={s.label}
-              stroke={s.color}
-              strokeWidth={2}
-              fill={`url(#${uid}-${s.key})`}
-              dot={false}
-              activeDot={{ r: 3 }}
-              connectNulls={false}
-              isAnimationActive={false}
-            />
-          ))}
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-  )
+  useEffect(() => {
+    latest.current = props
+  })
+
+  useEffect(() => {
+    const node = el.current!
+    const c = echarts.init(node, undefined, { renderer: 'canvas' })
+    chart.current = c
+    const resize = new ResizeObserver(() => c.resize())
+    resize.observe(node)
+    // alternância claro/escuro: troca a classe `.dark` no <html>; refaz as cores
+    const themeObserver = new MutationObserver(() => c.setOption(buildOption(latest.current, false), { replaceMerge: ['series'] }))
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    // duplo clique volta ao período completo
+    c.getZr().on('dblclick', () => c.dispatchAction({ type: 'dataZoom', start: 0, end: 100 }))
+    return () => {
+      resize.disconnect()
+      themeObserver.disconnect()
+      c.dispose()
+      chart.current = null
+      lastSpan.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    const spanChanged = lastSpan.current !== null && lastSpan.current !== props.spanMs
+    lastSpan.current = props.spanMs
+    // mescla para preservar o zoom do usuário entre atualizações de dados
+    chart.current?.setOption(buildOption(props, spanChanged), { replaceMerge: ['series'] })
+  })
+
+  return <div ref={el} style={{ height }} role="img" aria-label={`Gráfico de ${series.map((s) => s.label).join(', ')}`} />
 }
 
 /** Converte `Stat` (min/avg/max) de uma série em colunas planas do gráfico. */

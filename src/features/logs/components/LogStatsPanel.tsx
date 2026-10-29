@@ -1,5 +1,5 @@
 import { Ban, Globe, ShieldX, Siren } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ChartCard } from '@/components/charts/ChartCard'
 import { TimeSeriesChart, type ChartRow } from '@/components/charts/TimeSeriesChart'
@@ -18,11 +18,13 @@ interface Props {
   error: unknown
   onRetry: () => void
   range: LogRangeKey
+  /** Renderizado logo abaixo dos gráficos de série temporal (ex.: mapa por país). */
+  children?: ReactNode
 }
 
 const count = (v: number | null | undefined) => formatNumber(v, 0)
 
-export function LogStatsPanel({ stats, loading, error, onRetry, range }: Props) {
+export function LogStatsPanel({ stats, loading, error, onRetry, range, children }: Props) {
   const spanMs = LOG_RANGES.find((r) => r.key === range)?.ms ?? 0
   const counts = stats ? summaryCounts(stats) : null
   const timeline = useMemo(() => (stats ? (timelineRows(stats) as ChartRow[]) : []), [stats])
@@ -82,6 +84,8 @@ export function LogStatsPanel({ stats, loading, error, onRetry, range }: Props) 
           />
         </ChartCard>
       </div>
+
+      {children}
 
       {!error && (
         <div className="grid gap-4 xl:grid-cols-3">

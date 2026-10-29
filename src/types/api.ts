@@ -428,6 +428,21 @@ export interface LogStats {
   traffic: { time: string; requests: number; errors_4xx: number; errors_5xx: number }[]
 }
 
+export type CountryMetric = 'events' | 'bans' | 'blocks' | 'http_errors'
+
+/** `/logs/countries` — atenção: chaves em camelCase (diferente do resto da API). */
+export interface CountryStats {
+  generatedAt: string
+  periodDays: number
+  metric: CountryMetric
+  /** Soma de `countries[].events` + `unknown.events`. */
+  total: number
+  /** Ordenado por `events`, do maior para o menor. */
+  countries: { code: string; name: string; events: number; ips: number; avgScore: number }[]
+  /** IPs privados, ainda não consultados ou fora dos 1000 mais ativos. */
+  unknown: { events: number; ips: number }
+}
+
 export interface BanEvent {
   ip: string
   jail: string

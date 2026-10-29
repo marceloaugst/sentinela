@@ -13,11 +13,12 @@ import { Switch } from '@/components/ui/switch'
 import { useServers } from '@/features/servers/hooks/useServers'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { isApiError } from '@/lib/api'
-import type { LogSeverity, LogSource } from '@/types/api'
+import type { CountryMetric, LogSeverity, LogSource } from '@/types/api'
+import { CountryMapChart } from '../components/CountryMapChart'
 import { LogStatsPanel } from '../components/LogStatsPanel'
 import { LogsTable } from '../components/LogsTable'
 import { ALL_TYPES, isValidIp, SEVERITIES, SOURCE_LABEL, TYPES_BY_SOURCE, toCsv } from '../format'
-import { useLogs, useLogStats } from '../hooks/useLogs'
+import { useLogCountries, useLogs, useLogStats } from '../hooks/useLogs'
 import { DEFAULT_LOG_RANGE, isLogRange, LOG_RANGES, type LogRangeKey } from '../ranges'
 import type { LogFilters } from '../services/logsService'
 
@@ -48,6 +49,8 @@ function LogsError({ error, onRetry }: { error: unknown; onRetry: () => void }) 
   }
   return <ErrorState error={error} onRetry={onRetry} />
 }
+
+const isLogsUnavailable = (error: unknown) => isApiError(error) && error.code === 'LOGS_UNAVAILABLE'
 
 /** Texto digitado que acompanha o parâmetro da URL quando ele muda por fora (link "Ver tudo deste IP", voltar do navegador). */
 function useUrlText(param: string) {
@@ -110,6 +113,8 @@ export function LogsPage() {
   const filters: LogFilters = { server_id: serverId || undefined, source, type, severity, ip: ipParam || undefined, q: qParam || undefined, range }
   const list = useLogs({ ...filters, page, per_page: PER_PAGE }, live)
   const stats = useLogStats({ server_id: filters.server_id, range })
+  const [metric, setMetric] = useState<CountryMetric>('events')
+  const countries = useLogCountries({ server_id: filters.server_id, range, metric })
 
   const servers = useServers({ per_page: 100, sort: 'name' })
   const serverNames = useMemo(() => new Map((servers.data?.data ?? []).map((s) => [s.id, s.name])), [servers.data])
@@ -141,7 +146,19 @@ export function LogsPage() {
         }
       />
 
-      <LogStatsPanel stats={stats.data} loading={stats.isPending} error={stats.isError && !stats.data ? stats.error : undefined} onRetry={() => void stats.refetch()} range={range} />
+      <LogStatsPanel stats={stats.data} loading={stats.isPending} error={stats.isError && !stats.data ? stats.error : undefined} onRetry={() => void stats.refetch()} range={range}>
+        {/* Sem armazenamento de logs a própria lista já explica; o painel de países some, como o de estatísticas. */}
+        {!isLogsUnavailable(countries.error) && (
+          <CountryMapChart
+            stats={countries.data}
+            loading={countries.isPending}
+            error={countries.isError && !countries.data ? countries.error : undefined}
+            onRetry={() => void countries.refetch()}
+            metric={metric}
+            onMetric={setMetric}
+          />
+        )}
+      </LogStatsPanel>
 
       <Card>
         <div className="grid gap-3 border-b p-4 sm:grid-cols-2 lg:grid-cols-4">

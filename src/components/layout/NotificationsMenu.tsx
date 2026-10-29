@@ -17,10 +17,13 @@ export function NotificationsMenu() {
   const list = useNotifications({ per_page: 6 })
   const markRead = useMarkNotificationRead()
   const markAll = useMarkAllNotificationsRead()
-  const count = list.data?.meta.unread ?? 0
+  // IP banido é notificação silenciosa: aparece na lista, mas não conta no sino (meta.unread inclui todos os tipos).
+  const unreadTriggered = useNotifications({ per_page: 1, unread: true, kind: 'alert_triggered' })
+  const unreadResolved = useNotifications({ per_page: 1, unread: true, kind: 'alert_resolved' })
+  const count = (unreadTriggered.data?.meta.total ?? 0) + (unreadResolved.data?.meta.total ?? 0)
 
   const open = (n: AppNotification) => {
-    if (canMark && !n.read_at) markRead.mutate(n.id)
+    if (canMark && !n.read_at && n.kind !== 'ip_banned') markRead.mutate(n.id)
     navigate(notificationLink(n))
   }
 
@@ -70,10 +73,10 @@ export function NotificationsMenu() {
                 <span className="truncate text-xs text-muted-foreground">{n.server_name ?? '—'}</span>
                 <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
                   {formatRelative(n.created_at)}
-                  {!n.read_at && <span className="size-2 rounded-full bg-primary" aria-label="Não lida" />}
+                  {!n.read_at && n.kind !== 'ip_banned' && <span className="size-2 rounded-full bg-primary" aria-label="Não lida" />}
                 </span>
               </span>
-              <span className={cn('line-clamp-1 text-xs', !n.read_at && 'font-semibold')}>{n.title}</span>
+              <span className={cn('line-clamp-1 text-xs', !n.read_at && n.kind !== 'ip_banned' && 'font-semibold')}>{n.title}</span>
               <span className="line-clamp-2 text-xs text-muted-foreground">{n.message}</span>
             </DropdownMenuItem>
           ))
